@@ -197,11 +197,19 @@ websockets==12.0
 🧱 Folder Structure
 crypto-matching-engine/
 ├── app/
+
 │   └── main.py              # FastAPI server (REST + WS)
+
 ├── engine/
+
 │   ├── matching_engine.py   # Matching logic
+
 │   └── order_book.py        # Order book data structure
+
 ├── tests/
+
 │   └── test_engine.py       # Unit tests
+
 ├── index.html               # Simple frontend UI
+
 └── requirements.txt
