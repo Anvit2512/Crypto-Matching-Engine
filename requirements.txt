@@ -1,0 +1,6 @@
+fastapi==0.115.2
+uvicorn[standard]
+pydantic==2.9.2
+orjson==3.10.7
+pytest==8.3.3
+websockets==12.0

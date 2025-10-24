@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crypto Matching Engine — Simple Web UI</title>
+  <style>
+    :root{
+      --bg:#0f1220; --panel:#161a2b; --muted:#8a93b2; --text:#e7ecff; --accent:#6ea8fe; --buy:#19c37d; --sell:#ff6a6a;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text)}
+    header{position:sticky; top:0; z-index:5; background:linear-gradient(180deg,var(--panel),rgba(22,26,43,0.85)); border-bottom:1px solid #232742}
+    .wrap{max-width:1100px; margin:0 auto; padding:14px 16px}
+    h1{font-size:18px; margin:0}
+    .grid{display:grid; grid-template-columns: 1.2fr .8fr; gap:16px; margin-top:16px}
+    .card{background:var(--panel); border:1px solid #232742; border-radius:12px; overflow:hidden}
+    .card h2{font-size:14px; font-weight:600; margin:0; padding:12px 14px; border-bottom:1px solid #232742; color:#cdd5ff}
+    .card .content{padding:12px 14px}
+    .row{display:flex; gap:10px; flex-wrap:wrap}
+    input, select, button, textarea{background:#0f1324; color:var(--text); border:1px solid #2a3057; border-radius:8px; padding:10px 12px; font-size:14px}
+    input:focus, select:focus, button:focus{outline:2px solid #3a4aa3; outline-offset:1px}
+    button{cursor:pointer; background:linear-gradient(180deg,#2b3b8b,#1e2a64); border-color:#38469a}
+    button:hover{filter:brightness(1.05)}
+    .muted{color:var(--muted)}
+    .flex{display:flex; align-items:center; gap:8px}
+    .pill{padding:4px 8px; border-radius:999px; border:1px solid #2a3057; background:#0f1324; font-size:12px}
+    .bbo{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+    .bbo .price{font-variant-numeric:tabular-nums; font-weight:700}
+    .price.buy{color:var(--buy)}
+    .price.sell{color:var(--sell)}
+    table{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums}
+    th,td{padding:8px 6px; border-bottom:1px dashed #22274a; font-size:13px}
+    th{color:#b9c1ea; text-align:left}
+    tbody tr:hover{background:#131a33}
+    .rhs{display:flex; flex-direction:column; gap:16px}
+    .log{max-height:260px; overflow:auto; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:#0c1020; border:1px solid #232742; border-radius:10px; padding:10px}
+    .ok{color:#89f0c3}
+    .err{color:#ff8f8f}
+    footer{color:var(--muted); text-align:center; padding:16px}
+    @media (max-width: 960px){ .grid{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap flex" style="justify-content:space-between;">
+      <div class="flex" style="gap:10px">
+        <h1>Crypto Matching Engine — Simple Web UI</h1>
+        <span class="pill">BBO + L2 + Trades + Submit</span>
+      </div>
+      <div class="flex">
+        <label class="muted">Server:</label>
+        <input id="baseUrl" value="http://127.0.0.1:8000" style="width:230px"/>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <div class="card">
+      <div class="content row" style="justify-content:space-between; align-items:center">
+        <div class="flex" style="gap:10px; flex-wrap:wrap">
+          <label class="muted">Symbol</label>
+          <input id="symbol" value="BTC-USDT" style="width:150px"/>
+          <button id="connectBtn">Connect Feeds</button>
+          <span id="status" class="pill">Disconnected</span>
+        </div>
+        <div class="bbo">
+          <span class="muted">Best Bid</span> <span id="bestBid" class="price buy">—</span>
+          <span class="muted">/ Best Ask</span> <span id="bestAsk" class="price sell">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Order Book (Top 10)</h2>
+        <div class="content">
+          <div class="row" style="gap:16px">
+            <div style="flex:1">
+              <h3 class="muted" style="margin:4px 0">Asks</h3>
+              <table id="asksTbl">
+                <thead><tr><th>Price</th><th>Qty</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div style="flex:1">
+              <h3 class="muted" style="margin:4px 0">Bids</h3>
+              <table id="bidsTbl">
+                <thead><tr><th>Price</th><th>Qty</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="rhs">
+        <section class="card">
+          <h2>Place Order</h2>
+          <div class="content">
+            <div class="row">
+              <select id="orderType">
+                <option value="market">market</option>
+                <option value="limit" selected>limit</option>
+                <option value="ioc">ioc</option>
+                <option value="fok">fok</option>
+              </select>
+              <select id="side">
+                <option value="buy" selected>buy</option>
+                <option value="sell">sell</option>
+              </select>
+              <input id="qty" placeholder="quantity" value="1.0" style="width:120px"/>
+              <input id="px" placeholder="price (for non-market)" value="60000" style="width:160px"/>
+              <button id="sendBtn">Submit</button>
+            </div>
+            <p class="muted" style="margin-top:8px">Tip: For <b>market</b> orders, price is ignored. For <b>limit/IOC/FOK</b>, price is required.</p>
+            <div class="log" id="respLog" style="margin-top:10px"></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Trade Tape</h2>
+          <div class="content">
+            <table id="tradesTbl">
+              <thead><tr><th>Time</th><th>Px</th><th>Qty</th><th>Side</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <section class="card" style="margin-top:16px">
+      <h2>Events</h2>
+      <div class="content log" id="eventLog"></div>
+    </section>
+
+  </main>
+
+  <footer>
+    Built for your Python matching engine • Simple HTML/CSS/JS — no libs.
+  </footer>
+
+  <script>
+    const el = sel => document.querySelector(sel);
+    const bidsT = el('#bidsTbl tbody');
+    const asksT = el('#asksTbl tbody');
+    const tradesT = el('#tradesTbl tbody');
+    const bestBid = el('#bestBid');
+    const bestAsk = el('#bestAsk');
+    const statusPill = el('#status');
+    const eventLog = el('#eventLog');
+    const respLog = el('#respLog');
+
+    function fmtTime(iso){
+      try{ return new Date(iso).toLocaleTimeString(); }catch{return iso}
+    }
+    function setStatus(s){ statusPill.textContent = s; }
+    function log(line, cls='ok'){
+      const d=document.createElement('div'); d.className=cls; d.textContent=line; eventLog.prepend(d);
+    }
+    function logResp(obj){
+      const s = JSON.stringify(obj,null,2); const pre = document.createElement('pre'); pre.textContent = s; respLog.prepend(pre);
+    }
+
+    function renderDepth(msg){
+      // msg: { timestamp, symbol, bids:[ [price, qty], ... ], asks:[ [price, qty], ... ] }
+      bidsT.innerHTML = '';
+      asksT.innerHTML = '';
+      const bids = msg.bids || []; const asks = msg.asks || [];
+      if(bids.length){ bestBid.textContent = bids[0][0] + ' × ' + bids[0][1]; } else { bestBid.textContent = '—'; }
+      if(asks.length){ bestAsk.textContent = asks[0][0] + ' × ' + asks[0][1]; } else { bestAsk.textContent = '—'; }
+      for(const [p,q] of asks){
+        const tr=document.createElement('tr');
+        tr.innerHTML = `<td class="price sell">${p}</td><td>${q}</td>`;
+        asksT.appendChild(tr);
+      }
+      for(const [p,q] of bids){
+        const tr=document.createElement('tr');
+        tr.innerHTML = `<td class="price buy">${p}</td><td>${q}</td>`;
+        bidsT.appendChild(tr);
+      }
+    }
+
+    function addTrade(t){
+      const tr=document.createElement('tr');
+      tr.innerHTML = `<td>${fmtTime(t.timestamp)}</td><td>${t.price}</td><td>${t.quantity}</td><td class="${t.aggressor_side==='buy'?'price buy':'price sell'}">${t.aggressor_side}</td>`;
+      tradesT.prepend(tr);
+      // keep last 50
+      while(tradesT.rows.length>50) tradesT.deleteRow(-1);
+    }
+
+    let mdWS, trWS;
+
+    async function connect(){
+      const base = el('#baseUrl').value.replace(/\/$/,'');
+      const sym = encodeURIComponent(el('#symbol').value.trim());
+      try{
+        if(mdWS) mdWS.close(); if(trWS) trWS.close();
+        mdWS = new WebSocket(`ws://${base.split('://')[1]}/ws/marketdata?symbol=${sym}`);
+        trWS = new WebSocket(`ws://${base.split('://')[1]}/ws/trades?symbol=${sym}`);
+        setStatus('Connecting…');
+
+        mdWS.onopen = ()=>{ setStatus('Connected'); log('MD connected'); };
+        mdWS.onmessage = (ev)=>{
+          try{ const msg = JSON.parse(ev.data); renderDepth(msg); }
+          catch{ log('Bad MD payload','err'); }
+        };
+        mdWS.onclose = ()=>{ setStatus('Disconnected'); log('MD closed','err'); };
+
+        trWS.onopen = ()=>{ log('Trades connected'); };
+        trWS.onmessage = (ev)=>{ try{ addTrade(JSON.parse(ev.data)); }catch{ log('Bad TR payload','err'); } };
+        trWS.onclose = ()=>{ log('Trades closed','err'); };
+      }catch(err){ setStatus('Error'); log('Connect error: '+err,'err'); }
+    }
+
+    async function submitOrder(){
+      const base = el('#baseUrl').value.replace(/\/$/,'');
+      const payload = {
+        symbol: el('#symbol').value.trim(),
+        order_type: el('#orderType').value,
+        side: el('#side').value,
+        quantity: el('#qty').value.trim()
+      };
+      if(payload.order_type !== 'market'){
+        payload.price = el('#px').value.trim();
+      }
+      try{
+        const r = await fetch(`${base}/orders`,{
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+        });
+        const j = await r.json();
+        logResp(j);
+        if(!r.ok){ log('Order error: '+(j.detail||r.status),'err'); }
+        else{ log('Order accepted: '+j.order_id); }
+      }catch(err){ log('Request failed: '+err,'err'); }
+    }
+
+    // wire UI
+    el('#connectBtn').addEventListener('click', connect);
+    el('#sendBtn').addEventListener('click', submitOrder);
+
+    // Auto-connect on load
+    window.addEventListener('load', connect);
+  </script>
+</body>
+</html>
