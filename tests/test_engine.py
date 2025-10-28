@@ -47,3 +47,4 @@ def test_fok_requires_full():
     fok2 = mk("buy", 2, 101, t="fok")
     trades, rest = eng.submit(fok2)
     assert sum(t.quantity for t in trades) == Decimal("2") and rest is None
+

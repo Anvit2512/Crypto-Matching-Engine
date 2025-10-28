@@ -37,6 +37,8 @@
     .log{max-height:260px; overflow:auto; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; background:#0c1020; border:1px solid #232742; border-radius:10px; padding:10px}
     .ok{color:#89f0c3}
     .err{color:#ff8f8f}
+    .hint{font-size:12px; color:#a9b2da}
+    .hidden{display:none}
     footer{color:var(--muted); text-align:center; padding:16px}
     @media (max-width: 960px){ .grid{grid-template-columns:1fr} }
   </style>
@@ -105,16 +107,22 @@
                 <option value="limit" selected>limit</option>
                 <option value="ioc">ioc</option>
                 <option value="fok">fok</option>
+                <option value="stop_market">stop_market</option>
+                <option value="stop_limit">stop_limit</option>
+                <option value="take_profit">take_profit</option>
               </select>
               <select id="side">
                 <option value="buy" selected>buy</option>
                 <option value="sell">sell</option>
               </select>
               <input id="qty" placeholder="quantity" value="1.0" style="width:120px"/>
-              <input id="px" placeholder="price (for non-market)" value="60000" style="width:160px"/>
+              <input id="px" placeholder="price (limit/ioc/fok/stop_limit)" value="60000" style="width:200px"/>
+              <input id="triggerPx" placeholder="trigger_price (stop*/take_profit)" class="hidden" style="width:220px"/>
               <button id="sendBtn">Submit</button>
             </div>
-            <p class="muted" style="margin-top:8px">Tip: For <b>market</b> orders, price is ignored. For <b>limit/IOC/FOK</b>, price is required.</p>
+            <p id="tip" class="hint" style="margin-top:8px">
+              Tip: For <b>market</b> orders, price is ignored. For <b>limit/IOC/FOK</b>, price is required.
+            </p>
             <div class="log" id="respLog" style="margin-top:10px"></div>
           </div>
         </section>
@@ -139,7 +147,7 @@
   </main>
 
   <footer>
-    Built for your Python matching engine • Simple HTML/CSS/JS — no libs.
+    Built for your Python matching engine • Simple HTML/CSS/JS — now with stops & take-profit.
   </footer>
 
   <script>
@@ -152,6 +160,10 @@
     const statusPill = el('#status');
     const eventLog = el('#eventLog');
     const respLog = el('#respLog');
+    const orderType = el('#orderType');
+    const px = el('#px');
+    const trig = el('#triggerPx');
+    const tip = el('#tip');
 
     function fmtTime(iso){
       try{ return new Date(iso).toLocaleTimeString(); }catch{return iso}
@@ -165,7 +177,6 @@
     }
 
     function renderDepth(msg){
-      // msg: { timestamp, symbol, bids:[ [price, qty], ... ], asks:[ [price, qty], ... ] }
       bidsT.innerHTML = '';
       asksT.innerHTML = '';
       const bids = msg.bids || []; const asks = msg.asks || [];
@@ -187,10 +198,10 @@
       const tr=document.createElement('tr');
       tr.innerHTML = `<td>${fmtTime(t.timestamp)}</td><td>${t.price}</td><td>${t.quantity}</td><td class="${t.aggressor_side==='buy'?'price buy':'price sell'}">${t.aggressor_side}</td>`;
       tradesT.prepend(tr);
-      // keep last 50
       while(tradesT.rows.length>50) tradesT.deleteRow(-1);
     }
 
+    // --- WS connections ---
     let mdWS, trWS;
 
     async function connect(){
@@ -203,10 +214,7 @@
         setStatus('Connecting…');
 
         mdWS.onopen = ()=>{ setStatus('Connected'); log('MD connected'); };
-        mdWS.onmessage = (ev)=>{
-          try{ const msg = JSON.parse(ev.data); renderDepth(msg); }
-          catch{ log('Bad MD payload','err'); }
-        };
+        mdWS.onmessage = (ev)=>{ try{ renderDepth(JSON.parse(ev.data)); }catch{ log('Bad MD payload','err'); } };
         mdWS.onclose = ()=>{ setStatus('Disconnected'); log('MD closed','err'); };
 
         trWS.onopen = ()=>{ log('Trades connected'); };
@@ -215,6 +223,34 @@
       }catch(err){ setStatus('Error'); log('Connect error: '+err,'err'); }
     }
 
+    // --- UI logic for order type inputs ---
+    function refreshHints(){
+      const t = orderType.value;
+      // Show/hide fields
+      // - market: no price, no trigger
+      // - limit/ioc/fok: price required, no trigger
+      // - stop_market/take_profit: trigger required, price ignored
+      // - stop_limit: both trigger and price required
+      const showPrice = (t === 'limit' || t === 'ioc' || t === 'fok' || t === 'stop_limit');
+      const showTrig  = (t === 'stop_market' || t === 'stop_limit' || t === 'take_profit');
+
+      px.classList.toggle('hidden', !showPrice);
+      trig.classList.toggle('hidden', !showTrig);
+
+      if(t === 'market'){
+        tip.innerHTML = 'Tip: <b>market</b> ignores price. Use qty & side only.';
+      }else if(t === 'limit' || t === 'ioc' || t === 'fok'){
+        tip.innerHTML = 'Tip: <b>'+t+'</b> requires <b>price</b>.';
+      }else if(t === 'stop_market'){
+        tip.innerHTML = 'Tip: <b>stop_market</b> requires <b>trigger_price</b>; sends a child <b>market</b> order when triggered.';
+      }else if(t === 'take_profit'){
+        tip.innerHTML = 'Tip: <b>take_profit</b> requires <b>trigger_price</b>; sends a child <b>market</b> order when triggered.';
+      }else if(t === 'stop_limit'){
+        tip.innerHTML = 'Tip: <b>stop_limit</b> requires <b>trigger_price</b> and <b>price</b> (limit).';
+      }
+    }
+
+    // --- Submit order ---
     async function submitOrder(){
       const base = el('#baseUrl').value.replace(/\/$/,'');
       const payload = {
@@ -223,9 +259,28 @@
         side: el('#side').value,
         quantity: el('#qty').value.trim()
       };
-      if(payload.order_type !== 'market'){
+
+      const t = payload.order_type;
+      // include price?
+      if (t !== 'market' && t !== 'stop_market' && t !== 'take_profit') {
         payload.price = el('#px').value.trim();
       }
+      // include trigger_price?
+      if (t === 'stop_market' || t === 'stop_limit' || t === 'take_profit') {
+        payload.trigger_price = el('#triggerPx').value.trim();
+      }
+
+      // basic front-end validation (helps avoid 422s)
+      if(!payload.quantity || Number(payload.quantity) <= 0){
+        log('Quantity must be > 0','err'); return;
+      }
+      if((t === 'limit' || t === 'ioc' || t === 'fok' || t === 'stop_limit') && (!payload.price || Number(payload.price) <= 0)){
+        log('Price required and must be > 0 for '+t,'err'); return;
+      }
+      if((t === 'stop_market' || t === 'stop_limit' || t === 'take_profit') && (!payload.trigger_price || Number(payload.trigger_price) <= 0)){
+        log('trigger_price required and must be > 0 for '+t,'err'); return;
+      }
+
       try{
         const r = await fetch(`${base}/orders`,{
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
@@ -240,9 +295,13 @@
     // wire UI
     el('#connectBtn').addEventListener('click', connect);
     el('#sendBtn').addEventListener('click', submitOrder);
+    el('#orderType').addEventListener('change', refreshHints);
 
-    // Auto-connect on load
-    window.addEventListener('load', connect);
+    // Auto-connect on load + set correct hint visibility
+    window.addEventListener('load', ()=>{
+      refreshHints();
+      connect();
+    });
   </script>
 </body>
 </html>
