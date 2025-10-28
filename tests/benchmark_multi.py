@@ -1,43 +1,44 @@
-# # tests/benchmark_engine.py
-# import time, random
+# import time
 # from decimal import Decimal
+# from statistics import median
 # from engine.matching_engine import MatchingEngine
 # from engine.models import Order
 
 # SYM = "BTC-USDT"
 
 # def mk(side, qty, px=None, t="limit"):
-#     return Order(symbol=SYM, order_type=t, side=side, quantity=Decimal(str(qty)), price=Decimal(str(px)) if px else None)
+#     return Order(symbol=SYM, order_type=t, side=side,
+#                  quantity=Decimal(str(qty)),
+#                  price=Decimal(str(px)) if px is not None else None)
 
-# def run_benchmark(n=10_000):
+# def run_once(n):
 #     eng = MatchingEngine()
-#     # Seed both sides
 #     for i in range(1000):
-#         eng.submit(mk("sell", qty=0.01, px=60000 + (i % 50)))
-#         eng.submit(mk("buy", qty=0.01, px=59950 - (i % 50)))
-#     # Run
-#     t0 = time.perf_counter()
+#         eng.submit(mk("sell", 0.01, 60000 + (i % 50)))
+#         eng.submit(mk("buy",  0.01, 59950 - (i % 50)))
 #     lat = []
+#     t0 = time.perf_counter()
 #     for i in range(n):
-#         if i % 2 == 0:
-#             o = mk("buy", qty=0.005, px=60010, t="ioc")
-#         else:
-#             o = mk("sell", qty=0.005, px=59990, t="ioc")
+#         o = mk("buy", 0.005, 60010, "ioc") if i % 2 == 0 else mk("sell", 0.005, 59990, "ioc")
 #         s = time.perf_counter()
 #         eng.submit(o)
-#         lat.append((time.perf_counter() - s)*1e6)  # us
+#         lat.append((time.perf_counter() - s) * 1e6)  # microseconds
 #     dt = time.perf_counter() - t0
-#     tps = n/dt
 #     lat.sort()
-#     p50 = lat[int(0.5*len(lat))]
-#     p95 = lat[int(0.95*len(lat))]
-#     p99 = lat[int(0.99*len(lat))]
-#     print(f"Orders: {n}, Elapsed: {dt:.3f}s, Throughput: {tps:,.0f} ord/s")
-#     print(f"Latency (us): p50={p50:.0f}, p95={p95:.0f}, p99={p99:.0f}")
+#     return {
+#         "N": n,
+#         "elapsed_s": dt,
+#         "throughput_ops": n/dt,
+#         "p50_us": lat[int(0.50*len(lat))],
+#         "p95_us": lat[int(0.95*len(lat))],
+#         "p99_us": lat[int(0.99*len(lat))]
+#     }
 
 # if __name__ == "__main__":
-#     run_benchmark()
-# tests/benchmark_engine.py
+#     for n in (5_000, 10_000, 20_000):
+#         r = run_once(n)
+#         print(f"N={r['N']:,}  elapsed={r['elapsed_s']:.2f}s  thr={r['throughput_ops']:.0f}/s  p50={r['p50_us']:.0f}us  p95={r['p95_us']:.0f}us  p99={r['p99_us']:.0f}us")
+# tests/benchmark_multi.py
 import asyncio
 import time
 from decimal import Decimal
@@ -69,7 +70,7 @@ async def run_once(n: int) -> Dict[str, Any]:
     for i in range(n):
         o = mk("buy", 0.005, 60010, "ioc") if (i % 2 == 0) else mk("sell", 0.005, 59990, "ioc")
         s = time.perf_counter()
-        await eng.submit(o)                           # <-- await the async submit
+        await eng.submit(o)
         lat_us.append((time.perf_counter() - s) * 1e6)
     dt = time.perf_counter() - t0
 
@@ -86,10 +87,10 @@ async def run_once(n: int) -> Dict[str, Any]:
     }
 
 async def main():
-    N = 10_000
-    r = await run_once(N)
-    print(f"Orders: {r['N']:,}, Elapsed: {r['elapsed_s']:.3f}s, Throughput: {r['throughput_ops']:.0f} ord/s")
-    print(f"Latency (us): p50={r['p50_us']:.0f}, p95={r['p95_us']:.0f}, p99={r['p99_us']:.0f}")
+    for n in (5_000, 10_000, 20_000):
+        r = await run_once(n)
+        print(f"N={r['N']:,}  elapsed={r['elapsed_s']:.2f}s  thr={r['throughput_ops']:.0f}/s  "
+              f"p50={r['p50_us']:.0f}us  p95={r['p95_us']:.0f}us  p99={r['p99_us']:.0f}us")
 
 if __name__ == "__main__":
     asyncio.run(main())
