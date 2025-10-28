@@ -1,7 +1,7 @@
 # ⚡ Crypto Matching Engine (Python, REG NMS–Inspired)
 
-A high-performance cryptocurrency matching engine implementing **REG NMS–style price–time priority** and **internal order protection** — built in Python with FastAPI + async WebSocket feeds.  
-Includes an optional **HTML dashboard** for live order-book visualization.
+A high-performance cryptocurrency matching engine implementing **REG NMS–style price–time priority** and **internal order protection** — built in **Python** using **FastAPI** and **async WebSocket feeds**.  
+Includes an optional **HTML dashboard frontend** for real-time visualization of the order book, trades, and BBO (Best Bid & Offer).
 
 ---
 
@@ -9,26 +9,26 @@ Includes an optional **HTML dashboard** for live order-book visualization.
 
 ### 🔧 Core Matching Logic
 - **Price–Time Priority (FIFO)** within each price level  
-- **Internal Trade-Through Protection** — marketable orders sweep from best price outward  
-- Supports all major order types:
+- **Internal Trade-Through Protection** — marketable orders always match best available prices before crossing the book  
+- Supports major order types:
   - 🟢 `market`
   - 🟡 `limit`
   - 🔵 `ioc` (Immediate-Or-Cancel)
   - 🔴 `fok` (Fill-Or-Kill)
 
 ### 🧩 Bonus Order Types
-- ⛔ `stop_market` — activates as a market order when trigger hits  
-- 🧱 `stop_limit` — activates as a limit order at a specified price  
-- 🎯 `take_profit` — activates as a market order when price ≥ target  
+- ⛔ `stop_market` — activates as a market order when trigger price is reached  
+- 🧱 `stop_limit` — activates as a limit order at a specified trigger price  
+- 🎯 `take_profit` — activates as a market order when the market reaches a target price  
 
 ### ⚙️ Engine Enhancements
 - Real-time **BBO (Best Bid & Offer)** + **Top-10 Depth** feed via WebSocket  
 - Real-time **Trade Execution** stream  
-- **Maker–Taker fee model** (default 10 / 20 bps)  
-- **Persistence:** order book state auto-save / reload (`/admin/save` / `/admin/load`)  
-- **Async** FastAPI endpoints — fully event-loop safe  
-- **Benchmarking utility** (`tests/benchmark_engine.py`)  
-- Structured logging and unit tests  
+- **Maker–Taker fee model** (default: 10 / 20 bps)  
+- **Persistence** — order book state can auto-save/reload (`/admin/save`, `/admin/load`)  
+- Fully **async** and event-loop safe (no blocking or nested loop errors)  
+- Built-in **benchmarking** utility (`tests/benchmark_engine.py`)  
+- Structured logging and **unit test coverage**  
 
 ---
 
@@ -75,7 +75,7 @@ Copy code
   ]
 }
 🔹 Market Data Feed — WS /ws/marketdata?symbol=BTC-USDT
-Real-time Top-10 Depth updates.
+Real-time Top-10 depth updates.
 
 json
 Copy code
@@ -86,7 +86,7 @@ Copy code
   "asks": [["60010", "1.2"], ["60020", "0.8"]]
 }
 🔹 Trade Stream — WS /ws/trades?symbol=BTC-USDT
-Trade execution feed.
+Real-time trade execution feed.
 
 json
 Copy code
@@ -160,88 +160,155 @@ python tests/benchmark_engine.py
 # Latency (us): p50=110, p95=330, p99=700
 🧠 Design Overview
 📘 Order Book
-Bid side → max-heap by price
+Bid side → max-heap (best price highest)
 
-Ask side → min-heap by price
+Ask side → min-heap (best price lowest)
 
 Each price level stores a FIFO deque of orders
 
+Enables O(log N) access for best price and O(1) queue management
+
 ⚡ Matching Logic
-Marketable orders sweep best-price first
+Marketable orders sweep from best price outward
 
-FOK pre-validates liquidity before execution
+FOK: pre-validates full quantity before execution
 
-IOC cancels any unfilled portion
+IOC: executes partial fills, cancels remainder
 
-Stop/TP activate on trigger conditions
+Stop/Take-Profit: activate once trigger met
 
-Matching emits trade + market-data events asynchronously
+Matching emits trade + market data updates asynchronously
 
 💸 Fee Model
 Maker: 0.10% (10 bps)
 
 Taker: 0.20% (20 bps)
 
-Fees shown in each trade payload:
+Fees shown in trade payload:
 
 json
 Copy code
 { "maker_fee": "60.0000", "taker_fee": "120.0000" }
 💾 Persistence
-Saves order book and triggers to JSON (state/orderbook_<symbol>.json)
+Saves state → state/orderbook_<symbol>.json
 
-Restores cleanly after restart
+Restores cleanly on restart for replayable trading sessions
 
 🚀 Performance
-O(log N) price access via heaps
+O(log N) best-price lookup via heaps
 
-Async broadcast queues for low latency
+Async I/O for non-blocking WebSocket fan-out
 
 Benchmarked >1000 orders/sec on a single core
 
 🌐 Frontend Dashboard (index.html)
-A simple, dependency-free HTML dashboard to visualize:
+A minimal, dependency-free web UI for testing and monitoring.
 
-🔹 Real-time order book (bids / asks)
+Displays
 
-🔹 Trade tape
+Real-time order book (bids / asks)
 
-🔹 Live BBO display
+Trade tape
 
-🔹 Order form supporting all types:
+BBO values
 
-market, limit, ioc, fok
-
-stop_market, stop_limit, take_profit
-
-trigger_price input auto-appears when needed
+Order form supporting all order types
+(market, limit, ioc, fok, stop_market, stop_limit, take_profit)
 
 Usage
-1️⃣ Start backend:
 
 bash
 Copy code
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-2️⃣ Open index.html in your browser.
-3️⃣ Set Base URL = http://127.0.0.1:8000 and click Connect Feeds.
+Then open index.html and set:
+
+java
+Copy code
+Base URL = http://127.0.0.1:8000
+Click Connect Feeds to view real-time updates.
 
 🧱 Folder Structure
+perl
+Copy code
 crypto-matching-engine/
 ├── app/
-│   └── main.py              # FastAPI server (REST + WS)
+│   └── main.py              # FastAPI server (REST + WebSocket)
 ├── engine/
-│   ├── matching_engine.py   # Core matching logic (async)
-│   ├── order_book.py        # Order book + heaps
-│   ├── models.py            # Data models (Order, Trade)
+│   ├── matching_engine.py   # Core matching logic
+│   ├── order_book.py        # Order book structures
+│   ├── models.py            # Order, Trade, Trigger classes
 │   └── __init__.py
 ├── tests/
 │   ├── test_engine.py       # Unit tests
-│   └── benchmark_engine.py  # Performance tests
-├── state/                   # Persistence snapshots
-├── index.html               # Simple frontend UI
+│   └── benchmark_engine.py  # Performance benchmark
+├── state/                   # Order book persistence files
+├── index.html               # Frontend dashboard
 └── requirements.txt
+🧩 Requirements
+makefile
+Copy code
+fastapi==0.115.2
+uvicorn[standard]
+pydantic==2.9.2
+orjson==3.10.7
+pytest==8.3.3
+websockets==12.0
+🧱 System Architecture & Design Decisions
+🧩 Architecture Overview
+css
+Copy code
+[Frontend (index.html)]
+     │
+     ▼
+(REST API / WebSocket Layer)
+     │
+     ▼
+[FastAPI Application]
+     │
+     ▼
+[Matching Engine Core]
+ ├─ OrderBook (Heaps + FIFO)
+ ├─ MatchingEngine (Price–Time + Triggers)
+ ├─ FeeModel / Trade Generator
+ ├─ Async Channels (MarketData, Trades)
+ └─ JSON Persistence (state/)
+Frontend → Sends REST orders & listens to WebSocket feeds.
 
-Frontend auto-connects WebSockets and dynamically shows relevant order fields.  
-You can extend this engine with more order types, persistent queues, or multi-symbol support easily.  
-Built with ❤️ for low-latency trading simulation and exchange research.
+FastAPI Layer → Handles requests asynchronously, forwards to the engine.
 
+Matching Engine Core → Executes all business logic and maintains state.
+
+Persistence Layer → Provides fault recovery and replay.
+
+Broadcast Channels → Enable low-latency market/trade updates to all clients.
+
+🔹 Key Design Decisions
+Design Element	Rationale
+Python + FastAPI + asyncio	Simple async model and easy JSON serialization for rapid prototyping.
+Heaps (price) + Deques (FIFO)	Achieves O(log N) for price lookup and O(1) for queue order.
+Async event loop	Non-blocking execution for simultaneous REST and WS traffic.
+In-memory state + JSON persistence	Lightweight and transparent vs. database overhead.
+Broadcast queues for WebSocket	Low latency fan-out and easy scalability to multiple clients.
+Maker–Taker fee model	Emulates real exchange economics.
+Stop/Take-Profit triggers	Expands to realistic order management scenarios.
+
+⚖️ Trade-Off Decisions
+Area	Decision	Trade-Off
+Language Choice	Python (FastAPI) for clarity and async support	Lower raw performance than C++ but faster iteration speed
+Data Persistence	JSON files instead of SQL/Redis	Easier to debug; not ideal for very high-frequency data
+Single-threaded Async Model	Simple and deterministic	Limited CPU scaling without multiprocessing
+Heaps + Deques	Efficient and intuitive structure	Harder to handle partial level aggregation
+In-memory Engine	Ultra-fast access for demo / local tests	Needs persistence for production-grade fault tolerance
+
+🧩 Summary
+This system provides:
+
+Exchange-grade matching logic (price–time priority + FIFO)
+
+Conditional orders and fees like real trading venues
+
+Real-time market data streaming via WebSockets
+
+Modular and extendable design — easy to scale into a production microservice
+
+Built with ❤️ for low-latency trading simulation, research, and exchange prototyping.
