@@ -74,6 +74,10 @@ Copy code
     }
   ]
 }
+
+
+
+
 🔹 Market Data Feed — WS /ws/marketdata?symbol=BTC-USDT
 Real-time Top-10 depth updates.
 
@@ -85,6 +89,10 @@ Copy code
   "bids": [["59990", "2.5"], ["59980", "1.0"]],
   "asks": [["60010", "1.2"], ["60020", "0.8"]]
 }
+
+
+
+
 🔹 Trade Stream — WS /ws/trades?symbol=BTC-USDT
 Real-time trade execution feed.
 
@@ -100,6 +108,10 @@ Copy code
   "maker_order_id": "cc56e375-0486-4349-bd79-aa7ce00490f8",
   "taker_order_id": "1471c8e2-c8f7-4a72-a2c2-53bed4f02c5a"
 }
+
+
+
+
 🧩 Example Test Scenarios
 1️⃣ Limit + Market Fill
 bash
@@ -111,6 +123,9 @@ curl -X POST localhost:8000/orders -H "Content-Type: application/json" \
 # Cross with market buy
 curl -X POST localhost:8000/orders -H "Content-Type: application/json" \
 -d '{"symbol":"BTC-USDT","order_type":"market","side":"buy","quantity":"1"}'
+
+
+
 2️⃣ IOC Partial Fill
 bash
 Copy code
@@ -121,6 +136,9 @@ curl -X POST localhost:8000/orders -H "Content-Type: application/json" \
 # IOC buy 2.0 — partial fill + cancel remainder
 curl -X POST localhost:8000/orders -H "Content-Type: application/json" \
 -d '{"symbol":"BTC-USDT","order_type":"ioc","side":"buy","quantity":"2.0","price":"60100"}'
+
+
+
 3️⃣ FOK All-or-Nothing
 bash
 Copy code
@@ -133,6 +151,9 @@ curl -X POST localhost:8000/orders -H "Content-Type: application/json" \
 # FOK buy 5.0 @60000 → fills all
 curl -X POST localhost:8000/orders -H "Content-Type: application/json" \
 -d '{"symbol":"BTC-USDT","order_type":"fok","side":"buy","quantity":"5.0","price":"60000"}'
+
+
+
 4️⃣ Stop & Take-Profit Triggers
 bash
 Copy code
@@ -143,6 +164,9 @@ curl -X POST localhost:8000/orders -H "Content-Type: application/json" \
 # Take-profit sell triggers when price >= 60500
 curl -X POST localhost:8000/orders -H "Content-Type: application/json" \
 -d '{"symbol":"BTC-USDT","order_type":"take_profit","side":"sell","quantity":"0.3","trigger_price":"60500"}'
+
+
+
 5️⃣ Persistence (Save / Load)
 bash
 Copy code
@@ -151,6 +175,9 @@ curl -X POST localhost:8000/admin/save?symbol=BTC-USDT
 
 # Reload state after restart
 curl -X POST localhost:8000/admin/load?symbol=BTC-USDT
+
+
+
 6️⃣ Benchmark
 bash
 Copy code
@@ -158,6 +185,9 @@ python tests/benchmark_engine.py
 # Output:
 # Orders: 10000, Elapsed: 2.1s, Throughput: 4700 ord/s
 # Latency (us): p50=110, p95=330, p99=700
+
+
+
 🧠 Design Overview
 📘 Order Book
 Bid side → max-heap (best price highest)
@@ -167,6 +197,8 @@ Ask side → min-heap (best price lowest)
 Each price level stores a FIFO deque of orders
 
 Enables O(log N) access for best price and O(1) queue management
+
+
 
 ⚡ Matching Logic
 Marketable orders sweep from best price outward
@@ -179,6 +211,8 @@ Stop/Take-Profit: activate once trigger met
 
 Matching emits trade + market data updates asynchronously
 
+
+
 💸 Fee Model
 Maker: 0.10% (10 bps)
 
@@ -189,10 +223,16 @@ Fees shown in trade payload:
 json
 Copy code
 { "maker_fee": "60.0000", "taker_fee": "120.0000" }
+
+
+
 💾 Persistence
 Saves state → state/orderbook_<symbol>.json
 
 Restores cleanly on restart for replayable trading sessions
+
+
+
 
 🚀 Performance
 O(log N) best-price lookup via heaps
@@ -200,6 +240,9 @@ O(log N) best-price lookup via heaps
 Async I/O for non-blocking WebSocket fan-out
 
 Benchmarked >1000 orders/sec on a single core
+
+
+
 
 🌐 Frontend Dashboard (index.html)
 A minimal, dependency-free web UI for testing and monitoring.
@@ -227,6 +270,9 @@ Copy code
 Base URL = http://127.0.0.1:8000
 Click Connect Feeds to view real-time updates.
 
+
+
+
 🧱 Folder Structure
 perl
 Copy code
@@ -245,6 +291,8 @@ crypto-matching-engine/
 ├── index.html               # Frontend dashboard
 └── requirements.txt
 
+
+
 🧩 Requirements
 makefile
 Copy code
@@ -254,6 +302,9 @@ pydantic==2.9.2
 orjson==3.10.7
 pytest==8.3.3
 websockets==12.0
+
+
+
 🧱 System Architecture & Design Decisions
 🧩 Architecture Overview
 css
@@ -283,6 +334,9 @@ Persistence Layer → Provides fault recovery and replay.
 
 Broadcast Channels → Enable low-latency market/trade updates to all clients.
 
+
+
+
 🔹 Key Design Decisions
 Design Element	Rationale
 Python + FastAPI + asyncio	Simple async model and easy JSON serialization for rapid prototyping.
@@ -293,6 +347,9 @@ Broadcast queues for WebSocket	Low latency fan-out and easy scalability to multi
 Maker–Taker fee model	Emulates real exchange economics.
 Stop/Take-Profit triggers	Expands to realistic order management scenarios.
 
+
+
+
 ⚖️ Trade-Off Decisions
 Area	Decision	Trade-Off
 Language Choice	Python (FastAPI) for clarity and async support	Lower raw performance than C++ but faster iteration speed
@@ -300,6 +357,9 @@ Data Persistence	JSON files instead of SQL/Redis	Easier to debug; not ideal for 
 Single-threaded Async Model	Simple and deterministic	Limited CPU scaling without multiprocessing
 Heaps + Deques	Efficient and intuitive structure	Harder to handle partial level aggregation
 In-memory Engine	Ultra-fast access for demo / local tests	Needs persistence for production-grade fault tolerance
+
+
+
 
 🧩 Summary
 This system provides:
